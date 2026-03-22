@@ -1,13 +1,8 @@
-# 核心依赖
-streamlit==1.26.0
-pandas==2.1.0
-numpy==1.26.0
-yfinance==0.2.28
-openai==1.28.0
-
-# 可选美化/绘图（Streamlit 已内置部分，但可增强）
-matplotlib==3.8.0
-plotly==5.20.0
-
-# 缓存和性能
-requests==2.31.0
+streamlit>=1.24,<1.27
+pandas>=2.0,<2.2
+numpy>=1.25,<1.27
+yfinance>=0.2.28
+openai>=1.27,<1.30
+matplotlib>=3.7,<3.9
+plotly>=5.15,<5.21
+requests>=2.30,<2.32
