@@ -16,7 +16,7 @@ st.set_page_config(page_title="Macro Portfolio Engine V2", layout="wide")
 # =============================
 # CONFIG
 # =============================
-FRED_API_KEY = "YOUR_FRED_API_KEY"  # <-- 替换
+FRED_API_KEY = st.secrets["FRED_API_KEY"] # <-- 替换
 
 ASSETS = ["SPY", "QQQ", "GLD", "TLT", "BTC-USD"]
 
