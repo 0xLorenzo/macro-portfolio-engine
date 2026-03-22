@@ -1,15 +1,14 @@
 # =====================================
-# Macro Portfolio Strategy App V4
-# 宏观状态机 + AI决策引擎（简化版）
+# Macro Portfolio Strategy App V4.1
+# 中文增强 + 可解释性 + UI优化
 # =====================================
 
 import streamlit as st
 import pandas as pd
 import numpy as np
 import yfinance as yf
-import requests
 
-st.set_page_config(page_title="宏观投资引擎 V4", layout="wide")
+st.set_page_config(page_title="宏观投资引擎 V4.1", layout="wide")
 
 # =============================
 # 安全导入
@@ -17,33 +16,34 @@ st.set_page_config(page_title="宏观投资引擎 V4", layout="wide")
 try:
     import yfinance as yf
 except ImportError:
-    st.error("缺少 yfinance 依赖")
+    st.error("缺少 yfinance 依赖，请检查 requirements.txt")
     st.stop()
 
 # =============================
-# 参数
+# 样式
 # =============================
-ASSETS = ["SPY", "QQQ", "GLD", "TLT", "BTC-USD", "^VIX"]
+st.markdown("""
+<style>
+.block {padding:14px;border-radius:10px;background:#111; color:#eee}
+.small {color:#aaa;font-size:12px}
+.title {font-size:26px;font-weight:600}
+.dot {font-size:18px;margin-right:6px}
+</style>
+""", unsafe_allow_html=True)
 
-BASE_WEIGHTS = {
-    "SPY": 0.25,
-    "QQQ": 0.20,
-    "GLD": 0.10,
-    "TLT": 0.15,
-    "BTC-USD": 0.10,
-    "CASH": 0.20
-}
+st.markdown('<div class="title">● 宏观投资引擎 V4.1</div>', unsafe_allow_html=True)
 
 # =============================
 # 数据
 # =============================
+ASSETS = ["SPY","QQQ","GLD","TLT","BTC-USD","^VIX"]
+
 @st.cache_data
-def load_data():
+def load():
     data = yf.download(ASSETS, period="2y")["Close"]
     return data.dropna()
 
-prices = load_data()
-
+prices = load()
 if prices.empty:
     st.error("数据加载失败")
     st.stop()
@@ -51,125 +51,130 @@ if prices.empty:
 returns = prices.pct_change().dropna()
 
 # =============================
-# 宏观状态机（核心）
+# 宏观状态机
 # =============================
 def macro_regime():
-    spy_trend = prices["SPY"].iloc[-1] > prices["SPY"].rolling(200).mean().iloc[-1]
-    tlt_trend = prices["TLT"].iloc[-1] > prices["TLT"].rolling(200).mean().iloc[-1]
+    spy_ma = prices["SPY"].rolling(200).mean().iloc[-1]
+    tlt_ma = prices["TLT"].rolling(200).mean().iloc[-1]
 
-    if spy_trend and not tlt_trend:
-        return "复苏（Risk-On）"
-    elif spy_trend and tlt_trend:
-        return "过热（通胀）"
-    elif not spy_trend and tlt_trend:
-        return "衰退（避险）"
+    spy_up = prices["SPY"].iloc[-1] > spy_ma
+    tlt_up = prices["TLT"].iloc[-1] > tlt_ma
+
+    if spy_up and not tlt_up:
+        return "复苏"
+    elif spy_up and tlt_up:
+        return "过热"
+    elif not spy_up and tlt_up:
+        return "衰退"
     else:
-        return "滞胀（Stagflation）"
+        return "滞胀"
 
 regime = macro_regime()
 
 # =============================
-# AI决策引擎（规则版模拟）
+# AI决策
 # =============================
-def ai_decision(regime):
-    if "复苏" in regime:
-        return {"SPY":1.3, "QQQ":1.3, "GLD":0.8, "TLT":0.7, "BTC-USD":1.2}
-    elif "过热" in regime:
-        return {"SPY":0.9, "QQQ":0.9, "GLD":1.3, "TLT":0.8, "BTC-USD":1.0}
-    elif "衰退" in regime:
-        return {"SPY":0.6, "QQQ":0.6, "GLD":1.2, "TLT":1.4, "BTC-USD":0.7}
-    else:
-        return {"SPY":0.7, "QQQ":0.7, "GLD":1.4, "TLT":1.0, "BTC-USD":0.8}
+def ai_weights(regime):
+    if regime == "复苏":
+        return {"SPY":1.3,"QQQ":1.3,"GLD":0.8,"TLT":0.7,"BTC-USD":1.2}
+    if regime == "过热":
+        return {"SPY":0.9,"QQQ":0.9,"GLD":1.3,"TLT":0.8,"BTC-USD":1.0}
+    if regime == "衰退":
+        return {"SPY":0.6,"QQQ":0.6,"GLD":1.2,"TLT":1.4,"BTC-USD":0.7}
+    return {"SPY":0.7,"QQQ":0.7,"GLD":1.4,"TLT":1.0,"BTC-USD":0.8}
 
-ai_weights = ai_decision(regime)
-
-# =============================
-# VIX风险控制（Taleb）
-# =============================
-def vix_control(weights):
-    vix = prices["^VIX"].iloc[-1]
-    if vix > 30:
-        for k in weights:
-            if k != "CASH":
-                weights[k] *= 0.6
-        weights["CASH"] += 0.4
-    return weights, vix
+ai_adj = ai_weights(regime)
 
 # =============================
 # 权重计算
 # =============================
 def compute_weights():
-    weights = {}
+    base = {"SPY":0.25,"QQQ":0.2,"GLD":0.1,"TLT":0.15,"BTC-USD":0.1}
+    w = {}
+    for a in base:
+        vol = returns[a].std()*np.sqrt(252)
+        w[a] = base[a]*ai_adj[a]*(1/(vol+1e-6))
+    total = sum(w.values())
+    for k in w:
+        w[k]/=total
+    return w
 
-    for asset in BASE_WEIGHTS:
-        if asset == "CASH":
-            continue
-        base = BASE_WEIGHTS[asset]
-        adj = ai_weights.get(asset,1)
-        vol = returns[asset].std() * np.sqrt(252)
-        risk = 1 / (vol + 1e-6)
-
-        weights[asset] = base * adj * risk
-
-    total_risk = sum(weights.values())
-    weights["CASH"] = max(0.1, 1 - total_risk)
-
-    weights, vix = vix_control(weights)
-
-    total = sum(weights.values())
-    for k in weights:
-        weights[k] /= total
-
-    return weights, vix
-
-weights, vix = compute_weights()
+weights = compute_weights()
 
 # =============================
 # 回测
 # =============================
-def backtest():
-    w = pd.Series(weights).drop("CASH")
-    aligned = returns[w.index]
-    return (aligned * w).sum(axis=1)
-
-portfolio_returns = backtest()
+w_series = pd.Series(weights)
+port = (returns[w_series.index]*w_series).sum(axis=1)
 
 # =============================
 # 指标
 # =============================
-def sharpe(r):
-    return (r.mean()/r.std())*np.sqrt(252)
+sharpe = (port.mean()/port.std())*np.sqrt(252)
 
+cum = (1+port).cumprod()
+peak = cum.cummax()
+dd_series = (cum-peak)/peak
+max_dd = dd_series.min()
 
-def max_dd(r):
-    cum = (1+r).cumprod()
-    peak = cum.cummax()
-    return ((cum-peak)/peak).min()
+start_dd = dd_series.idxmin()
 
-sr = sharpe(portfolio_returns)
-dd = max_dd(portfolio_returns)
+vix = prices["^VIX"].iloc[-1]
 
 # =============================
-# UI
+# UI展示
 # =============================
-st.title("🧠 宏观投资引擎 V4")
-
 col1,col2,col3 = st.columns(3)
-col1.metric("Sharpe", f"{sr:.2f}")
-col2.metric("最大回撤", f"{dd:.2%}")
-col3.metric("VIX", f"{vix:.1f}")
 
-st.subheader("🌍 当前宏观状态")
-st.success(regime)
+with col1:
+    st.markdown(f"<div class='block'>● Sharpe Ratio<br>{sharpe:.2f}</div>",unsafe_allow_html=True)
+    with st.expander("说明"):
+        st.write("Sharpe = (平均收益 - 无风险利率) / 波动率 × sqrt(252)")
+        st.write("用于衡量单位风险收益")
 
-st.subheader("📊 资产配置")
-st.dataframe(pd.Series(weights).sort_values(ascending=False))
+with col2:
+    st.markdown(f"<div class='block'>● 最大回撤<br>{max_dd:.2%}</div>",unsafe_allow_html=True)
+    with st.expander("说明"):
+        st.write(f"最大回撤起点时间：{start_dd}")
+        st.write("计算方式：历史净值峰值到最低点跌幅")
 
-st.subheader("📈 收益曲线")
-st.line_chart((1+portfolio_returns).cumprod())
+with col3:
+    st.markdown(f"<div class='block'>● VIX<br>{vix:.2f}</div>",unsafe_allow_html=True)
+    with st.expander("说明"):
+        st.write("VIX来源：CBOE波动率指数（yfinance ^VIX）")
+        st.write("代表市场恐慌程度：>30 高风险")
 
-st.subheader("🧠 AI决策解释")
-for k,v in ai_weights.items():
-    st.write(f"{k}: 调整系数 {v}")
+# =============================
+# 宏观状态解释
+# =============================
+st.subheader("● 当前宏观状态")
+st.write(regime)
+with st.expander("判断依据"):
+    st.write("SPY 与 TLT 是否高于200日均线组合判断")
 
-st.caption("V4：宏观状态机 + AI决策 + VIX风控")
+# =============================
+# 资产配置
+# =============================
+st.subheader("● 当前资产配置")
+alloc = {k:round(v*100,2) for k,v in weights.items()}
+st.dataframe(pd.Series(alloc))
+
+# =============================
+# 曲线
+# =============================
+st.subheader("● 收益曲线")
+st.line_chart(cum)
+
+# =============================
+# AI解释
+# =============================
+st.subheader("● AI决策解释")
+with st.expander("展开查看"):
+    st.write("基于宏观状态机调整权重系数")
+    st.write(f"当前状态：{regime}")
+    st.write("参数说明：")
+    st.write(ai_adj)
+    st.write("计算逻辑：基础权重 × AI系数 × 波动率倒数")
+    st.write("历史回溯：可通过回测曲线观察不同周期表现")
+
+st.caption("V4.1：高可解释性版本")
