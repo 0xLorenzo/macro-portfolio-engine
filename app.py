@@ -1,23 +1,31 @@
 # =====================================
-# Macro Portfolio Strategy App V2
-# Production-Ready (Streamlit + FRED)
+# Macro Portfolio Strategy App V3 (中文增强版)
+# Streamlit + 宏观 + 风控 + UI优化
 # =====================================
-# Run: streamlit run app.py
 
 import streamlit as st
 import pandas as pd
 import numpy as np
 import yfinance as yf
 import requests
-from datetime import datetime
-
-st.set_page_config(page_title="Macro Portfolio Engine V2", layout="wide")
 
 # =============================
-# CONFIG
+# 页面配置
 # =============================
-FRED_API_KEY = st.secrets["FRED_API_KEY"] # <-- 替换
+st.set_page_config(page_title="宏观投资组合引擎 V3", layout="wide")
 
+# =============================
+# 安全导入
+# =============================
+try:
+    import yfinance as yf
+except ImportError:
+    st.error("缺少 yfinance 依赖，请检查 requirements.txt")
+    st.stop()
+
+# =============================
+# 常量配置
+# =============================
 ASSETS = ["SPY", "QQQ", "GLD", "TLT", "BTC-USD"]
 
 BASE_WEIGHTS = {
@@ -30,45 +38,26 @@ BASE_WEIGHTS = {
 }
 
 # =============================
-# DATA
+# 数据获取
 # =============================
 @st.cache_data
 def load_prices():
-    data = yf.download(ASSETS, period="2y")["Close"]
-    return data.dropna()
+    try:
+        data = yf.download(ASSETS, period="2y")["Close"]
+        return data.dropna()
+    except:
+        st.error("市场数据加载失败")
+        return pd.DataFrame()
 
 prices = load_prices()
+
+if prices.empty:
+    st.stop()
+
 returns = prices.pct_change().dropna()
 
 # =============================
-# FRED MACRO
-# =============================
-def get_fred(series_id):
-    url = f"https://api.stlouisfed.org/fred/series/observations"
-    params = {
-        "series_id": series_id,
-        "api_key": FRED_API_KEY,
-        "file_type": "json"
-    }
-    r = requests.get(url, params=params).json()
-    df = pd.DataFrame(r["observations"])
-    df["value"] = pd.to_numeric(df["value"], errors="coerce")
-    return df["value"].dropna().astype(float)
-
-@st.cache_data
-def load_macro():
-    rates = get_fred("FEDFUNDS")
-    cpi = get_fred("CPIAUCSL")
-    return rates, cpi
-
-try:
-    rates, cpi = load_macro()
-    macro_ok = True
-except:
-    macro_ok = False
-
-# =============================
-# SIGNALS
+# 指标计算
 # =============================
 def momentum(price):
     ma200 = price.rolling(200).mean()
@@ -78,27 +67,10 @@ def momentum(price):
 def volatility(r):
     return r.std() * np.sqrt(252)
 
-
-def liquidity_signal():
-    if not macro_ok:
-        return 1.0
-
-    latest_rate = rates.iloc[-1]
-    latest_cpi = cpi.iloc[-1]
-
-    # 简化逻辑
-    if latest_rate < 3:
-        return 1.2
-    elif latest_rate > 5:
-        return 0.8
-    else:
-        return 1.0
-
 # =============================
-# WEIGHT ENGINE
+# 权重引擎
 # =============================
 def compute_weights():
-    L = liquidity_signal()
     weights = {}
 
     for asset in ASSETS:
@@ -107,7 +79,7 @@ def compute_weights():
         vol = volatility(returns[asset])
         R = 1 / (vol + 1e-6)
 
-        weights[asset] = base * L * T * R
+        weights[asset] = base * T * R
 
     total_risk = sum(weights.values())
     weights["CASH"] = max(0.1, 1 - total_risk)
@@ -121,7 +93,7 @@ def compute_weights():
 weights = compute_weights()
 
 # =============================
-# BACKTEST
+# 回测
 # =============================
 def backtest():
     w = pd.Series(weights).drop("CASH")
@@ -132,7 +104,7 @@ def backtest():
 portfolio_returns = backtest()
 
 # =============================
-# METRICS
+# 风险指标
 # =============================
 def sharpe(r):
     return (r.mean() / r.std()) * np.sqrt(252)
@@ -148,50 +120,62 @@ sr = sharpe(portfolio_returns)
 dd = max_drawdown(portfolio_returns)
 
 # =============================
-# RISK CONTROL
+# UI 美化
 # =============================
-if dd < -0.20:
-    for k in weights:
-        if k != "CASH":
-            weights[k] *= 0.7
-    weights["CASH"] += 0.3
+st.markdown("""
+<style>
+.big-font {font-size:28px !important; font-weight:600;}
+.metric-box {
+    background-color:#111827;
+    padding:15px;
+    border-radius:10px;
+    color:white;
+}
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown('<p class="big-font">📊 宏观投资组合引擎 V3</p>', unsafe_allow_html=True)
 
 # =============================
-# UI
+# 指标展示
 # =============================
-st.title("📊 Macro Portfolio Engine V2")
+col1, col2 = st.columns(2)
 
-st.subheader("📌 Allocation")
-st.write(pd.Series(weights).sort_values(ascending=False))
+with col1:
+    st.markdown('<div class="metric-box">📈 Sharpe Ratio<br><b>{:.2f}</b></div>'.format(sr), unsafe_allow_html=True)
 
-st.subheader("📈 Metrics")
-st.write(f"Sharpe Ratio: {sr:.2f}")
-st.write(f"Max Drawdown: {dd:.2%}")
+with col2:
+    st.markdown('<div class="metric-box">📉 最大回撤<br><b>{:.2%}</b></div>'.format(dd), unsafe_allow_html=True)
 
-st.subheader("📉 Portfolio Curve")
+# =============================
+# 权重展示
+# =============================
+st.subheader("📌 当前资产配置")
+st.dataframe(pd.Series(weights).sort_values(ascending=False))
+
+# =============================
+# 曲线
+# =============================
+st.subheader("📈 组合收益曲线")
 st.line_chart((1 + portfolio_returns).cumprod())
 
-st.subheader("📊 Asset Prices")
+st.subheader("📊 市场价格走势")
 st.line_chart(prices)
 
 # =============================
-# EXPLANATION
+# 策略解释
 # =============================
-st.subheader("🧠 Strategy Logic")
+st.subheader("🧠 策略逻辑说明")
+
 for asset, w in weights.items():
     if asset == "CASH":
-        st.write(f"Cash: {w:.1%} (Risk buffer)")
+        st.write(f"现金：{w:.1%}（风险缓冲）")
     else:
-        trend = "UP" if momentum(prices[asset]) > 1 else "DOWN"
-        st.write(f"{asset}: {w:.1%} | Trend: {trend}")
+        trend = "上涨" if momentum(prices[asset]) > 1 else "下跌"
+        st.write(f"{asset}：{w:.1%} | 趋势：{trend}")
 
 # =============================
-# FOOTER
+# 页脚
 # =============================
-st.markdown("""
-### 🚀 Next Upgrade Ideas
-- VIX 风控
-- AI新闻情绪
-- 自动调仓执行
-- 多周期回测
-""")
+st.markdown("---")
+st.caption("V3版本：宏观 + 趋势 + 风控 | 持续优化中")
