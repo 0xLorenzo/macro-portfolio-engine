@@ -1,6 +1,6 @@
 # =====================================
 
-# Macro Portfolio Strategy App V5.3 Safe Version
+# 宏观投资引擎 V5.3 安全版
 
 # GPT多维宏观判断 + 利率曲线 + 通胀 + 回测 + 风控 + 数据安全
 
@@ -45,10 +45,17 @@ returns = prices.pct_change().dropna()
 # =============================
 
 def macro_features():
-spy_trend = "数据不足" if len(prices.get("SPY",[])) < 200 else "上涨" if prices["SPY"].iloc[-1] > prices["SPY"].rolling(200).mean().iloc[-1] else "下跌"
-tlt_trend = "数据不足" if len(prices.get("TLT",[])) < 200 else "上涨" if prices["TLT"].iloc[-1] > prices["TLT"].rolling(200).mean().iloc[-1] else "下跌"
+spy_trend = (
+"数据不足" if len(prices.get("SPY", [])) < 200 else
+"上涨" if prices["SPY"].iloc[-1] > prices["SPY"].rolling(200).mean().iloc[-1] else "下跌"
+)
 
 ```
+tlt_trend = (
+    "数据不足" if len(prices.get("TLT", [])) < 200 else
+    "上涨" if prices["TLT"].iloc[-1] > prices["TLT"].rolling(200).mean().iloc[-1] else "下跌"
+)
+
 vix = prices.get("^VIX", pd.Series([0])).iloc[-1]
 dxy = prices.get("DX-Y.NYB", pd.Series([0])).iloc[-1]
 
@@ -56,16 +63,19 @@ short_rate = prices.get("^IRX", pd.Series([0])).iloc[-1]
 long_rate = prices.get("^TNX", pd.Series([0])).iloc[-1]
 curve_slope = long_rate - short_rate
 
-inflation_proxy = round(float(prices.get("TLT", pd.Series([0])).pct_change(252).iloc[-1]*100),2) if len(prices.get("TLT",[]))>=252 else 0
+inflation_proxy = (
+    round(float(prices.get("TLT", pd.Series([0])).pct_change(252).iloc[-1]*100),2)
+    if len(prices.get("TLT", [])) >= 252 else 0
+)
 
 return {
     "SPY趋势": spy_trend,
     "TLT趋势": tlt_trend,
-    "VIX": round(float(vix),2),
-    "美元指数DXY": round(float(dxy),2),
-    "短期利率": round(float(short_rate),2),
-    "长期利率": round(float(long_rate),2),
-    "利率曲线斜率": round(float(curve_slope),2),
+    "VIX": round(float(vix), 2),
+    "美元指数DXY": round(float(dxy), 2),
+    "短期利率": round(float(short_rate), 2),
+    "长期利率": round(float(long_rate), 2),
+    "利率曲线斜率": round(float(curve_slope), 2),
     "通胀proxy": inflation_proxy
 }
 ```
@@ -88,32 +98,31 @@ return {
 try:
 prompt = f"""
 当前宏观数据如下：
-- SPY趋势：{features['SPY趋势']}
-- TLT趋势：{features['TLT趋势']}
-- VIX：{features['VIX']}
-- 美元指数DXY：{features['美元指数DXY']}
-- 短期利率：{features['短期利率']}
-- 长期利率：{features['长期利率']}
-- 利率曲线斜率：{features['利率曲线斜率']}
-- 通胀proxy：{features['通胀proxy']}
 
-```
-    请判断四种宏观状态概率，并解释原因，给出潜在最大风险。输出JSON：
-    {{"probabilities":{{...}},"reasoning":"...","risk":"..."}}
-    """
-    res = openai.ChatCompletion.create(
-        model="gpt-4o-mini",
-        messages=[{"role":"user","content":prompt}]
-    )
-    import json
-    return json.loads(res.choices[0].message.content)
+* SPY趋势：{features['SPY趋势']}
+* TLT趋势：{features['TLT趋势']}
+* VIX：{features['VIX']}
+* 美元指数DXY：{features['美元指数DXY']}
+* 短期利率：{features['短期利率']}
+* 长期利率：{features['长期利率']}
+* 利率曲线斜率：{features['利率曲线斜率']}
+* 通胀proxy：{features['通胀proxy']}
+
+请判断四种宏观状态概率，并解释原因，给出潜在最大风险。输出JSON：
+{{"probabilities":{{...}},"reasoning":"...","risk":"..."}}
+"""
+res = openai.ChatCompletion.create(
+model="gpt-4o-mini",
+messages=[{"role":"user","content":prompt}]
+)
+import json
+return json.loads(res.choices[0].message.content)
 except:
-    return {
-        "probabilities": {"复苏":0.25,"过热":0.25,"衰退":0.25,"滞胀":0.25},
-        "reasoning": "GPT调用失败，使用默认概率", 
-        "risk": "无法判断"
-    }
-```
+return {
+"probabilities": {"复苏":0.25,"过热":0.25,"衰退":0.25,"滞胀":0.25},
+"reasoning": "GPT调用失败，使用默认概率",
+"risk": "无法判断"
+}
 
 ai_output = gpt_macro(features)
 probs = ai_output["probabilities"]
