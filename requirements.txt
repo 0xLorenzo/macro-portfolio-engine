@@ -1,22 +1,8 @@
-# Streamlit Web 框架
-streamlit>=1.24,<1.27
-
-# 数据处理
-pandas>=2.0,<2.2
-numpy>=1.25,<1.27
-
-# 金融数据获取
-yfinance>=0.2.28
-
-# OpenAI GPT 接口
-openai>=1.27,<1.30
-
-# 可视化
-matplotlib>=3.7,<3.9
-plotly>=5.15,<5.21
-
-# HTTP 请求
-requests>=2.30,<2.32
-
-# pip 超时设置（解决网络慢的问题）
---default-timeout=100
+streamlit
+pandas
+numpy
+yfinance
+openai
+matplotlib
+plotly
+requests
